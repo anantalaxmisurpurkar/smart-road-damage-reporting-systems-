@@ -2,18 +2,34 @@ import streamlit as st
 import sqlite3
 import pandas as pd
 from PIL import Image
-import cv2
 import numpy as np
 import os
 from datetime import datetime
 
+# Safe OpenCV import
+try:
+    import cv2
+except ImportError:
+    st.error("OpenCV is not installed. Add 'opencv-python-headless' to requirements.txt")
+    st.stop()
+
+# -----------------------------
+# PAGE CONFIG
+# -----------------------------
+st.set_page_config(
+    page_title="Smart Road Damage Reporting",
+    layout="wide"
+)
+
+st.title("🚧 Smart Road Damage Reporting System")
+
 # -----------------------------
 # DATABASE SETUP
 # -----------------------------
-conn = sqlite3.connect('database.db', check_same_thread=False)
+conn = sqlite3.connect("database.db", check_same_thread=False)
 c = conn.cursor()
 
-c.execute('''
+c.execute("""
 CREATE TABLE IF NOT EXISTS reports (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     location TEXT,
@@ -22,25 +38,22 @@ CREATE TABLE IF NOT EXISTS reports (
     image_path TEXT,
     date TEXT
 )
-''')
+""")
 
 conn.commit()
 
 # -----------------------------
 # CREATE UPLOAD FOLDER
 # -----------------------------
-if not os.path.exists("uploads"):
-    os.makedirs("uploads")
+UPLOAD_FOLDER = "uploads"
+
+if not os.path.exists(UPLOAD_FOLDER):
+    os.makedirs(UPLOAD_FOLDER)
 
 # -----------------------------
-# PAGE CONFIG
+# SIDEBAR MENU
 # -----------------------------
-st.set_page_config(page_title="Smart Road Damage Reporting", layout="wide")
-
-st.title("🚧 Smart Road Damage Reporting System")
-
 menu = ["Report Damage", "View Reports", "Analytics"]
-
 choice = st.sidebar.selectbox("Menu", menu)
 
 # -----------------------------
@@ -48,15 +61,25 @@ choice = st.sidebar.selectbox("Menu", menu)
 # -----------------------------
 def detect_damage(image):
 
+    # Convert PIL image to NumPy array
     img = np.array(image)
+
+    # Convert RGB to BGR for OpenCV
+    img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
+
+    # Convert to grayscale
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
-    # Edge detection
-    edges = cv2.Canny(gray, 100, 200)
+    # Blur image to reduce noise
+    blur = cv2.GaussianBlur(gray, (5, 5), 0)
 
+    # Edge detection
+    edges = cv2.Canny(blur, 100, 200)
+
+    # Count edges
     edge_count = np.sum(edges > 0)
 
-    # Basic logic
+    # Severity prediction
     if edge_count > 15000:
         severity = "High"
     elif edge_count > 8000:
@@ -65,6 +88,7 @@ def detect_damage(image):
         severity = "Low"
 
     return severity, edges
+
 
 # -----------------------------
 # REPORT DAMAGE PAGE
@@ -79,34 +103,49 @@ if choice == "Report Damage":
 
     uploaded_file = st.file_uploader(
         "Upload Road Image",
-        type=['jpg', 'png', 'jpeg']
+        type=["jpg", "jpeg", "png"]
     )
 
     if uploaded_file is not None:
 
-        image = Image.open(uploaded_file)
+        # Open image safely
+        image = Image.open(uploaded_file).convert("RGB")
 
-        st.image(image, caption="Uploaded Image", use_column_width=True)
+        st.image(
+            image,
+            caption="Uploaded Image",
+            use_container_width=True
+        )
 
+        # Detect damage
         severity, processed = detect_damage(image)
 
         st.subheader(f"⚠️ Predicted Severity: {severity}")
 
-        st.image(processed, caption="Detected Damage Edges")
+        st.image(
+            processed,
+            caption="Detected Damage Edges",
+            use_container_width=True
+        )
 
         if st.button("Submit Report"):
 
             timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
 
-            image_path = f"uploads/{timestamp}.jpg"
+            image_path = os.path.join(
+                UPLOAD_FOLDER,
+                f"{timestamp}.jpg"
+            )
 
+            # Save image
             image.save(image_path)
 
-            c.execute('''
+            # Insert into database
+            c.execute("""
             INSERT INTO reports
             (location, severity, description, image_path, date)
             VALUES (?, ?, ?, ?, ?)
-            ''', (
+            """, (
                 location,
                 severity,
                 description,
@@ -118,6 +157,7 @@ if choice == "Report Damage":
 
             st.success("✅ Report Submitted Successfully!")
 
+
 # -----------------------------
 # VIEW REPORTS PAGE
 # -----------------------------
@@ -125,13 +165,16 @@ elif choice == "View Reports":
 
     st.header("📋 Damage Reports")
 
-    df = pd.read_sql_query("SELECT * FROM reports", conn)
+    df = pd.read_sql_query(
+        "SELECT * FROM reports",
+        conn
+    )
 
-    if len(df) > 0:
+    if not df.empty:
 
         st.dataframe(df)
 
-        for index, row in df.iterrows():
+        for _, row in df.iterrows():
 
             st.subheader(f"Report ID: {row['id']}")
 
@@ -140,14 +183,24 @@ elif choice == "View Reports":
             st.write(f"📝 Description: {row['description']}")
             st.write(f"📅 Date: {row['date']}")
 
-            image = Image.open(row['image_path'])
+            # Check if image exists
+            if os.path.exists(row["image_path"]):
 
-            st.image(image, width=400)
+                image = Image.open(row["image_path"])
+
+                st.image(
+                    image,
+                    width=400
+                )
+
+            else:
+                st.warning("Image file not found.")
 
             st.markdown("---")
 
     else:
         st.info("No reports available.")
+
 
 # -----------------------------
 # ANALYTICS PAGE
@@ -156,15 +209,19 @@ elif choice == "Analytics":
 
     st.header("📊 Road Damage Analytics")
 
-    df = pd.read_sql_query("SELECT * FROM reports", conn)
+    df = pd.read_sql_query(
+        "SELECT * FROM reports",
+        conn
+    )
 
-    if len(df) > 0:
+    if not df.empty:
 
-        severity_count = df['severity'].value_counts()
+        severity_count = df["severity"].value_counts()
+
+        st.subheader("Damage Severity Distribution")
 
         st.bar_chart(severity_count)
 
-        st.subheader("Damage Severity Distribution")
         st.write(severity_count)
 
     else:
