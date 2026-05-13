@@ -1,17 +1,10 @@
 import streamlit as st
 import sqlite3
 import pandas as pd
-from PIL import Image
+from PIL import Image, ImageFilter
 import numpy as np
 import os
 from datetime import datetime
-
-# Safe OpenCV import
-try:
-    import cv2
-except ImportError:
-    st.error("OpenCV is not installed. Add 'opencv-python-headless' to requirements.txt")
-    st.stop()
 
 # -----------------------------
 # PAGE CONFIG
@@ -61,23 +54,17 @@ choice = st.sidebar.selectbox("Menu", menu)
 # -----------------------------
 def detect_damage(image):
 
-    # Convert PIL image to NumPy array
-    img = np.array(image)
+    # Convert image to grayscale
+    gray = image.convert("L")
 
-    # Convert RGB to BGR for OpenCV
-    img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
+    # Apply edge filter
+    edges = gray.filter(ImageFilter.FIND_EDGES)
 
-    # Convert to grayscale
-    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    # Convert to numpy array
+    edge_array = np.array(edges)
 
-    # Blur image to reduce noise
-    blur = cv2.GaussianBlur(gray, (5, 5), 0)
-
-    # Edge detection
-    edges = cv2.Canny(blur, 100, 200)
-
-    # Count edges
-    edge_count = np.sum(edges > 0)
+    # Count strong edges
+    edge_count = np.sum(edge_array > 50)
 
     # Severity prediction
     if edge_count > 15000:
