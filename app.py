@@ -213,3 +213,22 @@ elif choice == "Analytics":
 
     else:
         st.warning("No data available.")
+        import streamlit as st
+
+# Page Title
+st.title("🚧 Smart Road Damage Reporting System")
+
+# Project Description
+st.markdown("""
+### About the Project
+
+Our project reduces the problem of unreported road damages by providing an easy reporting and tracking system.
+
+Users can:
+- Upload road damage images
+- Report potholes and cracks
+- Track complaint status
+- Help authorities repair roads faster
+
+This system improves road safety and public transportation.
+""")
